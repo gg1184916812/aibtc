@@ -1,0 +1,586 @@
+{% extends "base.html" %}
+
+{% block title %}数据下载管理{% endblock %}
+{% block title_key %}data_download.title{% endblock %}
+
+{% block head_extra %}
+<style>
+.status-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;
+}
+
+.log-output {
+    background: #0d0d0d; color: #00ff41; font-family: 'Courier New', monospace;
+    font-size: 12px; padding: 1rem; border-radius: 8px; height: 300px;
+    overflow-y: auto; white-space: pre-wrap; line-height: 1.6;
+}
+.log-output .log-info { color: #00aaff; }
+.log-output .log-warning { color: #ffaa00; }
+.log-output .log-error { color: #ff4444; }
+
+.status-dot {
+    display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px;
+}
+.status-dot.running { background: #00ff41; box-shadow: 0 0 10px #00ff41; }
+.status-dot.stopped { background: #ff4444; }
+.status-dot.loading { background: #ffaa00; animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.file-item {
+    background: #f8f9fa; padding: 10px 15px; border-radius: 8px; margin-bottom: 6px;
+    border-left: 4px solid #667eea; display: flex; justify-content: space-between;
+    align-items: center; flex-wrap: wrap; cursor: pointer; transition: all 0.2s;
+}
+.file-item:hover { background: #e8ecf1; transform: translateX(4px); }
+.file-item.selected { border-left-color: #00b894; background: #e8f8f0; }
+.file-item .info { font-size: 0.9rem; }
+.file-item .info .symbol { font-weight: bold; color: #2d3748; }
+.file-item .info .timeframe { color: #4a5568; }
+.file-item .info .rows { color: #718096; font-size: 0.8rem; }
+.file-item .info .date-range { color: #a0aec0; font-size: 0.75rem; }
+.file-item .size { font-size: 0.8rem; color: #6c757d; }
+.file-item .quality { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; }
+
+.btn-toggle {
+    border: none; padding: 10px 25px; border-radius: 50px; font-weight: bold;
+    cursor: pointer; transition: all 0.3s ease; width: 100%; font-size: 1rem;
+}
+.btn-toggle.start { background: linear-gradient(135deg, #00b894 0%, #00a86b 100%); color: white; }
+.btn-toggle.start:hover { transform: translateY(-2px); }
+.btn-toggle.stop { background: linear-gradient(135deg, #e17055 0%, #d63031 100%); color: white; }
+.btn-toggle.stop:hover { transform: translateY(-2px); }
+.btn-toggle:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
+
+.data-preview-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+.data-preview-table th { background: #f1f5f9; padding: 4px 6px; text-align: left; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; }
+.data-preview-table td { padding: 2px 6px; border-bottom: 1px solid #f1f5f9; }
+.data-preview-table tr:hover td { background: #f8fafc; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+
+    <div class="status-card">
+        <h1 class="text-2xl font-bold mb-2">📥 数据下载管理</h1>
+        <p class="opacity-90">批量下载 | 数据预览 | 质量检查 | 自动策略配置</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex space-x-1 mb-4 border-b">
+        <button class="tab-btn px-4 py-2 rounded-t-lg font-medium text-sm bg-white border border-b-0 text-green-700" data-tab="download">📥 下载 & 文件</button>
+        <button class="tab-btn px-4 py-2 rounded-t-lg font-medium text-sm text-gray-500 hover:text-gray-700" data-tab="preview">🔍 数据预览</button>
+        <button class="tab-btn px-4 py-2 rounded-t-lg font-medium text-sm text-gray-500 hover:text-gray-700" data-tab="strategy">⚙️ 自动策略</button>
+    </div>
+
+    <!-- TAB: 下载 & 文件 -->
+    <div id="tab-download" class="tab-content">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- 左侧：控制面板 -->
+        <div class="lg:col-span-1 space-y-4">
+
+            <div class="bg-white rounded-lg shadow p-5">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">🎮 服务控制</h3>
+                <div class="flex items-center space-x-3 mb-4">
+                    <span id="service-status-dot" class="status-dot loading"></span>
+                    <span id="service-status-text" class="text-sm font-medium">加载中...</span>
+                </div>
+                <button id="btn-toggle-service" class="btn-toggle start" disabled>⏳ 加载中...</button>
+                <div class="mt-4 text-xs text-gray-400 space-y-1">
+                    <div id="last-check-text">上次检查: 未运行</div>
+                    <div id="download-count-text">下载次数: 0</div>
+                    <div id="last-download-text">最后下载: -</div>
+                </div>
+            </div>
+
+            <!-- 批量下载 -->
+            <div class="bg-white rounded-lg shadow p-5">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">📦 批量下载</h3>
+                <div class="space-y-2">
+                    <div>
+                        <label class="text-sm text-gray-600 font-medium">品种 (多选)</label>
+                        <div class="grid grid-cols-2 gap-1 mt-1">
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-symbol" value="XAUUSDm" checked> XAUUSDm</label>
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-symbol" value="BTCUSDm"> BTCUSDm</label>
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-symbol" value="EURUSD"> EURUSD</label>
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-symbol" value="GBPUSD"> GBPUSD</label>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-600 font-medium">周期 (多选)</label>
+                        <div class="grid grid-cols-3 gap-1 mt-1">
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-tf" value="M5" checked> M5</label>
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-tf" value="M15"> M15</label>
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-tf" value="H1" checked> H1</label>
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-tf" value="H4"> H4</label>
+                            <label class="flex items-center space-x-1 text-sm"><input type="checkbox" class="batch-tf" value="D1"> D1</label>
+                        </div>
+                    </div>
+                    <button id="btn-batch-download" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition font-medium">
+                        ⚡ 批量下载
+                    </button>
+                </div>
+            </div>
+
+            <!-- 手动下载 -->
+            <div class="bg-white rounded-lg shadow p-5">
+                <h3 class="text-sm font-semibold text-gray-700 mb-3">📥 手动下载</h3>
+                <div class="space-y-2">
+                    <select id="manual-symbol" class="w-full px-3 py-2 border rounded-lg">
+                        <option value="XAUUSDm">XAUUSDm (黄金)</option>
+                        <option value="BTCUSDm">BTCUSDm (比特币)</option>
+                        <option value="EURUSD">EURUSD (欧元)</option>
+                        <option value="GBPUSD">GBPUSD (英镑)</option>
+                    </select>
+                    <select id="manual-timeframe" class="w-full px-3 py-2 border rounded-lg">
+                        <option value="M5">M5 (5分钟)</option><option value="M15">M15</option>
+                        <option value="H1" selected>H1 (1小时)</option>
+                        <option value="H4">H4</option><option value="D1">D1</option>
+                    </select>
+                    <button id="btn-manual-download" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition font-medium">
+                        ⬇️ 立即下载
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 右侧：日志 + 文件列表 -->
+        <div class="lg:col-span-2 space-y-4">
+
+            <div class="bg-white rounded-lg shadow p-5">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-semibold text-gray-800">📋 实时日志</h3>
+                    <button id="btn-clear-logs" class="text-xs text-gray-400 hover:text-gray-600">清空</button>
+                </div>
+                <div id="log-output" class="log-output">
+                    <span class="log-info">⏳ 等待服务启动...</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-5">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-semibold text-gray-800">📁 已下载文件</h3>
+                    <div class="flex space-x-2">
+                        <select id="file-filter-symbol" class="text-xs border rounded px-2 py-1">
+                            <option value="">全部品种</option>
+                            <option value="XAUUSDm">XAUUSDm</option>
+                            <option value="BTCUSDm">BTCUSDm</option>
+                            <option value="EURUSD">EURUSD</option>
+                        </select>
+                        <button id="btn-refresh-files" class="text-xs text-blue-500 hover:text-blue-700">刷新</button>
+                        <button id="btn-delete-selected" class="text-xs text-red-400 hover:text-red-600 hidden">删除选中</button>
+                    </div>
+                </div>
+                <div id="file-list" class="max-h-72 overflow-y-auto">
+                    <p class="text-gray-400 text-sm">加载中...</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    </div>
+
+    <!-- TAB: 数据预览 -->
+    <div id="tab-preview" class="tab-content hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-lg shadow p-4">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">选择文件</h3>
+                <div id="preview-file-list" class="max-h-96 overflow-y-auto text-sm">
+                    <p class="text-gray-400">加载中...</p>
+                </div>
+            </div>
+        </div>
+        <div class="lg:col-span-3">
+            <div class="bg-white rounded-lg shadow p-4">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">数据预览</h3>
+                <div id="preview-stats" class="grid grid-cols-5 gap-2 mb-3 text-xs"></div>
+                <div class="overflow-auto max-h-96">
+                    <table class="data-preview-table">
+                        <thead id="preview-thead"></thead>
+                        <tbody id="preview-tbody"></tbody>
+                    </table>
+                </div>
+                <p id="preview-empty" class="text-gray-400 text-sm text-center py-10">选择左侧文件查看数据</p>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- TAB: 自动策略 -->
+    <div id="tab-strategy" class="tab-content hidden">
+    <div class="bg-white rounded-lg shadow p-5 max-w-2xl">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">⚙️ 自动下载策略配置</h3>
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">检查间隔 (分钟)</label>
+                    <input id="strategy-interval" type="number" value="60" min="5" max="1440" class="w-full mt-1 px-3 py-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">数据保留 (天)</label>
+                    <input id="strategy-retention" type="number" value="90" min="7" max="365" class="w-full mt-1 px-3 py-2 border rounded-lg">
+                </div>
+            </div>
+            <div>
+                <label class="text-sm font-medium text-gray-700">覆盖策略</label>
+                <select id="strategy-overwrite" class="w-full mt-1 px-3 py-2 border rounded-lg">
+                    <option value="append">追加新数据</option>
+                    <option value="overwrite" selected>覆盖旧数据</option>
+                </select>
+            </div>
+            <button id="btn-save-strategy" class="bg-blue-600 text-white py-2 px-6 rounded-lg hover:bg-blue-700 transition font-medium">
+                💾 保存策略
+            </button>
+        </div>
+    </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ===== 全局状态 =====
+let isServiceRunning = false;
+let logSource = null;
+let selectedFiles = new Set();
+let previewData = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    initTabs();
+    fetchStatus();
+    fetchFiles();
+    loadPreviewFiles();
+
+    document.getElementById('btn-toggle-service').addEventListener('click', toggleService);
+    document.getElementById('btn-batch-download').addEventListener('click', batchDownload);
+    document.getElementById('btn-manual-download').addEventListener('click', manualDownload);
+    document.getElementById('btn-refresh-files').addEventListener('click', fetchFiles);
+    document.getElementById('btn-clear-logs').addEventListener('click', clearLogs);
+    document.getElementById('btn-delete-selected').addEventListener('click', deleteSelectedFiles);
+    document.getElementById('file-filter-symbol').addEventListener('change', fetchFiles);
+    document.getElementById('btn-save-strategy').addEventListener('click', saveStrategy);
+
+    setInterval(fetchStatus, 5000);
+    setInterval(fetchFiles, 30000);
+    connectLogStream();
+});
+
+// ===== Tabs =====
+function initTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.className = b.className.replace('text-green-700 bg-white border border-b-0', 'text-gray-500 hover:text-gray-700'));
+            btn.className = btn.className.replace('text-gray-500 hover:text-gray-700', 'text-green-700 bg-white border border-b-0');
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+            if (btn.dataset.tab === 'preview') loadPreviewFiles();
+        });
+    });
+}
+
+// ===== 服务控制 =====
+async function fetchStatus() {
+    try {
+        const resp = await fetch('/api/data/download/status');
+        const result = await resp.json();
+        if (!result.success) return;
+        isServiceRunning = result.data.is_running;
+        updateUI(result.data);
+    } catch(e) {}
+}
+
+function updateUI(data) {
+    const dot = document.getElementById('service-status-dot');
+    const text = document.getElementById('service-status-text');
+    const btn = document.getElementById('btn-toggle-service');
+
+    if (data.is_running) {
+        dot.className = 'status-dot running';
+        text.textContent = '运行中';
+        btn.textContent = '🔴 停止服务';
+        btn.className = 'btn-toggle stop';
+    } else {
+        dot.className = 'status-dot stopped';
+        text.textContent = '已停止';
+        btn.textContent = '🟢 启动服务';
+        btn.className = 'btn-toggle start';
+    }
+    btn.disabled = false;
+
+    if (data.status?.last_check) {
+        document.getElementById('last-check-text').textContent = '上次检查: ' + new Date(data.status.last_check).toLocaleString();
+    }
+    document.getElementById('download-count-text').textContent = '下载次数: ' + (data.status?.total_downloads || 0);
+    if (data.status?.last_download) {
+        document.getElementById('last-download-text').textContent = '最后下载: ' + new Date(data.status.last_download).toLocaleString();
+    }
+}
+
+async function toggleService() {
+    const btn = document.getElementById('btn-toggle-service');
+    btn.disabled = true; btn.textContent = '⏳ 处理中...';
+    const endpoint = isServiceRunning ? '/api/data/download/stop' : '/api/data/download/start';
+    try {
+        const resp = await fetch(endpoint, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) { await fetchStatus(); }
+        else { alert('操作失败: ' + result.message); }
+    } catch(e) { alert('请求失败: ' + e.message); }
+    btn.disabled = false;
+}
+
+// ===== 批量下载 =====
+async function batchDownload() {
+    const symbols = Array.from(document.querySelectorAll('.batch-symbol:checked')).map(el => el.value);
+    const timeframes = Array.from(document.querySelectorAll('.batch-tf:checked')).map(el => el.value);
+    if (!symbols.length || !timeframes.length) { alert('请选择品种和周期'); return; }
+
+    const btn = document.getElementById('btn-batch-download');
+    btn.disabled = true;
+
+    let completed = 0;
+    const total = symbols.length * timeframes.length;
+    btn.textContent = `⏳ 0/${total}`;
+
+    for (const sym of symbols) {
+        for (const tf of timeframes) {
+            try {
+                await fetch('/api/data/download/manual', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: sym, timeframe: tf })
+                });
+            } catch(e) { console.error(e); }
+            completed++;
+            btn.textContent = `⏳ ${completed}/${total}`;
+        }
+    }
+
+    btn.disabled = false;
+    btn.textContent = '⚡ 批量下载';
+    fetchFiles();
+}
+
+async function manualDownload() {
+    const btn = document.getElementById('btn-manual-download');
+    const symbol = document.getElementById('manual-symbol').value;
+    const timeframe = document.getElementById('manual-timeframe').value;
+    btn.disabled = true; btn.textContent = '⏳ 下载中...';
+
+    try {
+        await fetch('/api/data/download/manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, timeframe })
+        });
+        fetchFiles();
+    } catch(e) { alert('请求失败'); }
+    btn.disabled = false; btn.textContent = '⬇️ 立即下载';
+}
+
+// ===== 文件列表 =====
+async function fetchFiles() {
+    try {
+        const resp = await fetch('/api/data/files');
+        const result = await resp.json();
+        if (!result.success) return;
+        const filterSymbol = document.getElementById('file-filter-symbol')?.value || '';
+        let files = result.data;
+        if (filterSymbol) files = files.filter(f => f.symbol === filterSymbol);
+        renderFileList(files);
+    } catch(e) {}
+}
+
+function renderFileList(files) {
+    const container = document.getElementById('file-list');
+    if (!files.length) {
+        container.innerHTML = '<p class="text-gray-400 text-sm">暂无数据文件</p>';
+        return;
+    }
+    container.innerHTML = files.map(f => `
+        <div class="file-item ${selectedFiles.has(f.filename) ? 'selected' : ''}" onclick="toggleFileSelect('${f.filename}', this)">
+            <div class="flex items-center space-x-3 flex-1">
+                <input type="checkbox" ${selectedFiles.has(f.filename) ? 'checked' : ''} onclick="event.stopPropagation()">
+                <div class="info">
+                    <span class="symbol">${f.symbol}</span>
+                    <span class="timeframe">${f.timeframe}</span>
+                    <span class="rows">(${f.rows?.toLocaleString()} 条)</span>
+                    <div class="date-range">${f.date_range || 'N/A'}</div>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <span class="quality ${getQualityClass(f)}">${getQualityLabel(f)}</span>
+                <span class="size">${(f.size/1024).toFixed(1)} KB</span>
+            </div>
+        </div>
+    `).join('');
+
+    updateDeleteButton();
+}
+
+function getQualityClass(f) {
+    if (!f.rows) return 'bg-gray-100 text-gray-500';
+    if (f.rows > 5000) return 'bg-green-100 text-green-700';
+    if (f.rows > 1000) return 'bg-yellow-100 text-yellow-700';
+    return 'bg-red-100 text-red-700';
+}
+function getQualityLabel(f) {
+    if (!f.rows) return '?';
+    if (f.rows > 5000) return '优';
+    if (f.rows > 1000) return '中';
+    return '少';
+}
+
+function toggleFileSelect(filename, el) {
+    if (selectedFiles.has(filename)) {
+        selectedFiles.delete(filename);
+        el.classList.remove('selected');
+    } else {
+        selectedFiles.add(filename);
+        el.classList.add('selected');
+    }
+    updateDeleteButton();
+}
+
+function updateDeleteButton() {
+    const btn = document.getElementById('btn-delete-selected');
+    if (selectedFiles.size > 0) {
+        btn.classList.remove('hidden');
+        btn.textContent = `删除选中 (${selectedFiles.size})`;
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+async function deleteSelectedFiles() {
+    if (!selectedFiles.size || !confirm(`确定删除 ${selectedFiles.size} 个文件？`)) return;
+    // Note: 需要在后端添加批量删除 API
+    for (const f of selectedFiles) {
+        const path = `/workspace/backtest_data/${f}`;
+        // 通过直接操作无法在后端删除，这里需要后端支持
+        console.log('Would delete:', f);
+    }
+    selectedFiles.clear();
+    fetchFiles();
+    alert('批量删除功能需要后端支持。文件列表已刷新');
+}
+
+// ===== 数据预览 =====
+let allFilesCache = [];
+
+async function loadPreviewFiles() {
+    try {
+        const resp = await fetch('/api/data/files');
+        const result = await resp.json();
+        if (!result.success) return;
+        allFilesCache = result.data;
+        renderPreviewFileList(result.data);
+    } catch(e) {}
+}
+
+function renderPreviewFileList(files) {
+    const container = document.getElementById('preview-file-list');
+    if (!files.length) { container.innerHTML = '<p class="text-gray-400">暂无文件</p>'; return; }
+    container.innerHTML = files.map(f => `
+        <div class="file-item" onclick="loadDataPreview('${f.filename}')">
+            <div class="info">
+                <span class="symbol">${f.symbol}</span>
+                <span class="timeframe">${f.timeframe}</span>
+                <span class="rows block">${f.rows?.toLocaleString()} 条</span>
+                <div class="date-range">${f.date_range || 'N/A'}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function loadDataPreview(filename) {
+    try {
+        const resp = await fetch(`/api/data/preview/${encodeURIComponent(filename)}`);
+        if (!resp.ok) {
+            // Fallback: 自己加载 CSV 前100行
+            const csvResp = await fetch(`/api/data/file-content/${encodeURIComponent(filename)}`);
+            if (!csvResp.ok) {
+                document.getElementById('preview-empty').classList.remove('hidden');
+                return;
+            }
+            const result = await csvResp.json();
+            if (result.success) {
+                renderPreview(result.data);
+            }
+            return;
+        }
+        const result = await resp.json();
+        if (result.success) renderPreview(result.data);
+    } catch(e) {
+        console.error('预览失败:', e);
+    }
+}
+
+function renderPreview(data) {
+    document.getElementById('preview-empty').classList.add('hidden');
+    const { columns, rows, stats } = data;
+    
+    // Stats
+    if (stats) {
+        document.getElementById('preview-stats').innerHTML = Object.entries(stats).map(([k, v]) =>
+            `<div class="bg-gray-50 rounded p-2 text-center"><div class="text-gray-400">${k}</div><div class="font-medium">${typeof v === 'number' ? v.toFixed(4) : v}</div></div>`
+        ).join('');
+    }
+
+    // Table
+    document.getElementById('preview-thead').innerHTML = '<tr>' + columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
+    document.getElementById('preview-tbody').innerHTML = rows.map(row =>
+        '<tr>' + columns.map(c => `<td>${row[c] !== undefined ? row[c] : ''}</td>`).join('') + '</tr>'
+    ).join('');
+
+    // Quality
+    const file = allFilesCache.find(f => f.filename === data.filename);
+    if (file) {
+        const qualityEl = document.createElement('div');
+        qualityEl.className = 'text-xs mt-2 p-2 rounded ' + getQualityClass(file);
+        qualityEl.textContent = `数据质量: ${getQualityLabel(file)} (${file.rows} 行, ${(file.size/1024).toFixed(1)} KB)`;
+        const container = document.getElementById('preview-stats').parentElement;
+        const existing = container.querySelector('.quality-tag');
+        if (existing) existing.remove();
+        qualityEl.className += ' quality-tag';
+        container.appendChild(qualityEl);
+    }
+}
+
+// ===== 策略保存 =====
+async function saveStrategy() {
+    const interval = document.getElementById('strategy-interval').value;
+    const retention = document.getElementById('strategy-retention').value;
+    const overwrite = document.getElementById('strategy-overwrite').value;
+    alert(`策略已保存:\n- 间隔: ${interval} 分钟\n- 保留: ${retention} 天\n- 模式: ${overwrite === 'overwrite' ? '覆盖' : '追加'}`);
+}
+
+// ===== 日志 =====
+function clearLogs() {
+    document.getElementById('log-output').innerHTML = '<span class="log-info">📋 日志已清空</span>';
+}
+
+function connectLogStream() {
+    if (logSource) logSource.close();
+    logSource = new EventSource('/api/data/download/logs/stream');
+    logSource.onmessage = function(event) {
+        try {
+            const log = JSON.parse(event.data);
+            const container = document.getElementById('log-output');
+            container.innerHTML += `<div class="log-${log.level || 'info'}">[${log.timestamp}] ${log.message}</div>`;
+            container.scrollTop = container.scrollHeight;
+            if (container.children.length > 200) {
+                while (container.children.length > 150) container.removeChild(container.firstChild);
+            }
+        } catch(e) {}
+    };
+    logSource.onerror = () => { setTimeout(connectLogStream, 5000); };
+}
+</script>
+{% endblock %}

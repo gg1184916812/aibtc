@@ -1,0 +1,211 @@
+<!-- templates/optimization.html -->
+{% extends "base.html" %}
+
+{% block title_key %}nav.optimization{% endblock %}
+{% block title %}參數優化{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h2 class="text-2xl font-bold text-gray-800">參數優化</h2>
+    <div class="flex space-x-2">
+        <a href="{{ url_for('backtesting_page') }}" class="bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700">
+            前往回測
+        </a>
+    </div>
+</div>
+
+<div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+    <h3 class="text-sm font-medium text-blue-800">參數優化</h3>
+    <div class="mt-1 text-xs text-blue-700">
+        <p>選擇優化演算法，可疊加 Walk Forward 防過擬合。所有過程即時顯示，絕不黑箱。</p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- 設定區 -->
+    <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow">
+        <form id="optimize-form">
+            <div class="space-y-4">
+                <div>
+                    <label for="symbol-select" class="block text-sm font-medium text-gray-700">交易品種</label>
+                    <select id="symbol-select" name="symbol" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="XAUUSDm">XAUUSDm (黃金)</option>
+                        <option value="BTCUSDm">BTCUSDm (比特幣)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="timeframe-select" class="block text-sm font-medium text-gray-700">K棒時間週期</label>
+                    <select id="timeframe-select" name="timeframe" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="M1">1分K (M1)</option>
+                        <option value="M5">5分K (M5)</option>
+                        <option value="M15">15分K (M15)</option>
+                        <option value="M30">30分K (M30)</option>
+                        <option value="H1" selected>1小時 (H1)</option>
+                        <option value="H4">4小時 (H4)</option>
+                        <option value="D1">日線 (D1)</option>
+                        <option value="W1">週線 (W1)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">回測日期範圍</label>
+                    <div class="grid grid-cols-2 gap-2 mt-1">
+                        <div>
+                            <label class="text-xs text-gray-500">開始日期</label>
+                            <input type="date" id="date-from" name="date_from" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500">結束日期</label>
+                            <input type="date" id="date-to" name="date_to" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="strategy-select" class="block text-sm font-medium text-gray-700">選擇策略</label>
+                    <select id="strategy-select" name="strategy" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"></select>
+                </div>
+
+                <div>
+                    <label for="optimizer-select" class="block text-sm font-medium text-gray-700">優化演算法</label>
+                    <select id="optimizer-select" name="optimizer" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="optuna_tpe" selected>Optuna TPE（智能搜尋，推薦）</option>
+                        <option value="optuna_multiobj">Optuna 多目標（利潤＋回撤 Pareto）</option>
+                        <option value="grid">網格搜尋（全範圍暴力）</option>
+                        <option value="de">差分進化 DE（全域優化）</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center pt-1">
+                    <input type="checkbox" id="wfo-enabled" name="wfo_enabled" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="wfo-enabled" class="ml-2 text-sm font-medium text-gray-700">啟用 Walk Forward（防過擬合，時間窗口驗證）</label>
+                </div>
+
+                <div class="pt-4 border-t">
+                    <label for="initial_capital" class="block text-sm font-medium text-gray-700">初始本金 ($)</label>
+                    <input type="number" name="initial_capital" id="initial_capital" value="100" step="1" min="1"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+
+                <div class="pt-4 border-t">
+                    <h4 class="text-sm font-semibold text-gray-700 mb-2">風險管理參數</h4>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-xs text-gray-500">風險% 最小</label>
+                                <input type="number" name="opt_risk_percent_min" value="0.5" step="any" min="0.01" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500">最大</label>
+                                <input type="number" name="opt_risk_percent_max" value="2.0" step="any" min="0.01" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500">步長</label>
+                                <input type="number" name="opt_risk_percent_step" value="0.5" step="any" min="0.01" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-xs text-gray-500">SL(ATR) 最小</label>
+                                <input type="number" name="opt_sl_atr_min" value="1.0" step="any" min="0.1" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500">最大</label>
+                                <input type="number" name="opt_sl_atr_max" value="4.0" step="any" min="0.1" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500">步長</label>
+                                <input type="number" name="opt_sl_atr_step" value="0.5" step="any" min="0.01" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-xs text-gray-500">TP(ATR) 最小</label>
+                                <input type="number" name="opt_tp_atr_min" value="1.5" step="any" min="0.1" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500">最大</label>
+                                <input type="number" name="opt_tp_atr_max" value="6.0" step="any" min="0.1" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500">步長</label>
+                                <input type="number" name="opt_tp_atr_step" value="0.5" step="any" min="0.01" class="mt-1 block w-full rounded-md border-gray-300 text-sm">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="strategy-opt-params" class="pt-4 border-t space-y-3">
+                    <h4 class="text-sm font-semibold text-gray-700 mb-2">策略參數</h4>
+                    <span class="text-sm text-gray-500">選擇策略後載入</span>
+                </div>
+
+                <div class="flex space-x-2">
+                    <button type="submit" id="run-optimize-btn" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        開始優化
+                    </button>
+                    <button type="button" id="cancel-optimize-btn" class="hidden bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- 結果/日誌區 -->
+    <div id="results-container" class="lg:col-span-2 bg-white p-6 rounded-lg shadow hidden">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold">優化結果</h3>
+            <div class="flex space-x-2">
+                <button id="apply-to-backtest" class="bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700">
+                    一鍵填入回測
+                </button>
+                <button id="add-bot-from-optimize" class="bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700">
+                    一鍵新增機器人
+                </button>
+            </div>
+        </div>
+
+        <!-- 即時最佳結果 -->
+        <div id="live-best" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg hidden">
+            <p class="text-sm font-semibold text-green-800">目前最佳</p>
+            <div id="live-best-content" class="mt-1 text-sm text-green-700"></div>
+        </div>
+
+        <!-- 進度條 -->
+        <div id="progress-area" class="mb-4 hidden">
+            <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+                <span id="progress-phase">階段1: 粗篩</span>
+                <span id="progress-text">0 / 0</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- 最終摘要 -->
+        <div id="optimize-summary" class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"></div>
+
+        <!-- WFO / Pareto 專區 -->
+        <div id="wfo-summary" class="mb-6 hidden"></div>
+        <div id="pareto-summary" class="mb-6 hidden"></div>
+
+        <!-- 即時日誌 -->
+        <div class="mb-6">
+            <h4 class="text-sm font-semibold text-gray-700 mb-2">即時日誌</h4>
+            <div id="live-log" class="border rounded p-2 bg-gray-50 max-h-72 overflow-y-auto text-xs font-mono space-y-0.5"></div>
+        </div>
+
+        <!-- 結果圖表 -->
+        <div class="mb-6">
+            <canvas id="optimize-chart"></canvas>
+        </div>
+        <div id="all-results-table" class="max-h-96 overflow-y-auto"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/optimization.js') }}"></script>
+{% endblock %}

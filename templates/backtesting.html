@@ -1,0 +1,209 @@
+<!-- templates/backtesting.html -->
+{% extends "base.html" %}
+
+{% block title_key %}nav.backtest{% endblock %}
+{% block title %}策略回測{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh-tw.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h2 class="text-2xl font-bold text-gray-800" data-i18n="nav.backtest">策略回測</h2>
+    <div class="flex space-x-2">
+        <a href="{{ url_for('backtest_history_page') }}" class="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg font-medium hover:bg-gray-300">
+            <i class="fas fa-history mr-2"></i><span data-i18n="action.view">查看歷史</span>
+        </a>
+    </div>
+</div>
+
+<!-- Enhanced Engine Info -->
+<div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+    <div class="flex items-start">
+        <div class="flex-shrink-0">
+            <i class="fas fa-rocket text-blue-600 text-xl"></i>
+        </div>
+        <div class="ml-3">
+            <h3 class="text-sm font-medium text-blue-800">🚀 增強回測引擎</h3>
+            <div class="mt-1 text-sm text-blue-700">
+                <p>您的回測現在包括：</p>
+                <ul class="mt-1 list-disc list-inside text-xs space-y-1">
+                    <li>✅ <strong>MT5實時點差</strong> - 從MT5商品規格讀取真實點差</li>
+                    <li>✅ <strong>基於ATR的風險管理</strong> - 動態倉位調整</li>
+                    <li>✅ <strong>向量化加速計算</strong> - NumPy/Pandas批量運算</li>
+                    <li>✅ <strong>滑點模擬</strong> - 貼近真實執行</li>
+                    <li>✅ <strong>品種保護</strong> - 黃金交易安全措施</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- 設定區 -->
+    <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow">
+        <form id="backtest-form">
+            <div class="space-y-4">
+                <!-- 交易品種 -->
+                <div>
+                    <label for="symbol-select" class="block text-sm font-medium text-gray-700">交易品種</label>
+                    <select id="symbol-select" name="symbol" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="XAUUSDm">XAUUSDm (黃金)</option>
+                        <option value="BTCUSDm">BTCUSDm (比特幣)</option>
+                    </select>
+                </div>
+
+                <!-- K棒時間週期 -->
+                <div>
+                    <label for="timeframe-select" class="block text-sm font-medium text-gray-700">K棒時間週期</label>
+                    <select id="timeframe-select" name="timeframe" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="M1">1分K (M1)</option>
+                        <option value="M5">5分K (M5)</option>
+                        <option value="M15">15分K (M15)</option>
+                        <option value="M30">30分K (M30)</option>
+                        <option value="H1" selected>1小時 (H1)</option>
+                        <option value="H4">4小時 (H4)</option>
+                        <option value="D1">日線 (D1)</option>
+                        <option value="W1">週線 (W1)</option>
+                    </select>
+                </div>
+
+                <!-- 日期範圍 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">回測日期範圍</label>
+                    <div class="grid grid-cols-2 gap-2 mt-1">
+                        <div>
+                            <label class="text-xs text-gray-500">開始日期</label>
+                            <input type="date" id="date-from" name="date_from" 
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                   value="{{ default_start_date }}">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500">結束日期</label>
+                            <input type="date" id="date-to" name="date_to" 
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                   value="{{ default_end_date }}">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">系統將自動從MT5下載歷史數據</p>
+                </div>
+
+                <!-- 策略選擇 -->
+                <div>
+                    <label for="strategy-select" class="block text-sm font-medium text-gray-700">選擇策略</label>
+                    <select id="strategy-select" name="strategy" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"></select>
+                </div>
+
+                <!-- AI 模型選擇 -->
+                <div>
+                    <label for="ai-model-select" class="block text-sm font-medium text-gray-700">AI 預測模型</label>
+                    <select id="ai-model-select" name="ai_model" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">不使用 AI 預測</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">選擇用於市場狀態判斷和策略切換的 AI 模型。</p>
+                </div>
+
+                <!-- 快速套用預設 -->
+                <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <label for="preset-select" class="block text-sm font-medium text-gray-700">快速套用實戰參數</label>
+                    <div class="flex space-x-2 mt-1">
+                        <select id="preset-select" name="preset" class="flex-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-green-500 focus:ring-green-500">
+                            <option value="">— 選策略後自動載入 —</option>
+                        </select>
+                        <button type="button" id="apply-preset-btn" class="bg-green-600 text-white py-1.5 px-3 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 whitespace-nowrap" disabled>
+                            一鍵套用
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1" id="preset-source"></p>
+                </div>
+
+                <!-- 本金設定 -->
+                <div class="pt-4 border-t">
+                    <label for="initial_capital" class="block text-sm font-medium text-gray-700">
+                        <span>初始本金 ($)</span>
+                    </label>
+                    <input type="number" name="initial_capital" id="initial_capital" value="100" step="1" min="1"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <p class="text-xs text-gray-500 mt-1">回測起始資金</p>
+                </div>
+
+                <!-- 風險管理 -->
+                <div class="grid grid-cols-3 gap-4 pt-4 border-t">
+                    <div>
+                        <label for="risk_percent" class="block text-sm font-medium text-gray-700">
+                            <span>風險 (%)</span> 
+                            <span class="text-xs text-blue-600">倉位</span>
+                        </label>
+                        <input type="number" name="risk_percent" id="risk_percent" value="1.0" step="0.1" min="0.1" max="5.0" 
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">每筆交易風險佔本金%</p>
+                    </div>
+                    <div>
+                        <label for="sl_atr_multiplier" class="block text-sm font-medium text-gray-700">
+                            <span>止損 (ATR倍數)</span> 
+                            <span class="text-xs text-blue-600">增強</span>
+                        </label>
+                        <input type="number" name="sl_atr_multiplier" id="sl_atr_multiplier" value="2.0" step="0.1" min="0.5" max="5.0" 
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">基於波動率的動態止損</p>
+                    </div>
+                    <div>
+                        <label for="tp_atr_multiplier" class="block text-sm font-medium text-gray-700">
+                            <span>止盈 (ATR倍數)</span> 
+                            <span class="text-xs text-blue-600">增強</span>
+                        </label>
+                        <input type="number" name="tp_atr_multiplier" id="tp_atr_multiplier" value="4.0" step="0.1" min="1.0" max="10.0" 
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">基於波動率的動態止盈</p>
+                    </div>
+                </div>
+
+                <div id="params-container" class="space-y-4 pt-4 border-t">
+                    <span>策略參數將在此加載</span>
+                </div>
+
+                <!-- 下載進度 -->
+                <div id="download-progress" class="hidden pt-4 border-t">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-spinner fa-spin text-blue-500"></i>
+                        <span id="download-status" class="text-sm text-gray-600">正在從MT5下載數據...</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2 mt-2">
+                        <div id="download-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <button type="submit" id="run-backtest-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    執行回測
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 結果區 -->
+    <div id="results-container" class="lg:col-span-2 bg-white p-6 rounded-lg shadow hidden">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold">回測結果</h3>
+            <button id="add-bot-from-backtest" class="bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 hidden">
+                一鍵新增機器人
+            </button>
+        </div>
+        <div id="results-summary" class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"></div>
+        <div class="mb-6">
+            <canvas id="equity-chart"></canvas>
+        </div>
+        <div id="results-log"></div>
+    </div>
+    <div id="loading-spinner" class="lg:col-span-2 flex items-center justify-center hidden">
+        <i class="fas fa-spinner fa-spin text-blue-500 text-4xl"></i>
+        <p class="ml-4 text-gray-600">正在執行回測...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/backtesting.js') }}"></script>
+{% endblock %}

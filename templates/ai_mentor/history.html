@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title_key %}ai_mentor.history_page_title{% endblock %}
+{% block title %}📊 AI Mentor History{% endblock %}
+
+{% block head_extra %}
+<style>
+.mentor-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.history-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    border: 1px solid #e5e7eb;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.history-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+    transform: translateY(-2px);
+}
+
+.emotion-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.emotion-calm { background-color: #10b981; color: white; }
+.emotion-greedy { background-color: #f59e0b; color: white; }
+.emotion-fear { background-color: #8b5cf6; color: white; }
+.emotion-frustrated { background-color: #ef4444; color: white; }
+.emotion-neutral { background-color: #6b7280; color: white; }
+
+.profit-positive { color: #10b981; font-weight: bold; }
+.profit-negative { color: #ef4444; font-weight: bold; }
+
+.date-filter {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    border: 1px solid #e5e7eb;
+}
+
+.filter-btn {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.filter-btn.active {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}
+
+.filter-btn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6b7280;
+}
+
+.empty-state img {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 1rem;
+    opacity: 0.5;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    text-align: center;
+}
+
+.ai-summary {
+    background: #f8fafc;
+    border-left: 4px solid #3b82f6;
+    padding: 1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 1rem 0;
+    font-style: italic;
+}
+
+.session-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.session-date {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.session-performance {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.trades-count {
+    background: #f3f4f6;
+    color: #374151;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="mentor-card">
+        <h1 class="text-3xl font-bold mb-2" data-i18n="ai_mentor.history_title">📊 AI Mentor Trading History</h1>
+        <p class="text-blue-100 text-lg" data-i18n="ai_mentor.history_subtitle">Complete trading journey analysis with AI assistance</p>
+        <div class="mt-4 flex items-center space-x-4">
+            <span class="text-blue-200" data-i18n="ai_mentor.language">🇺🇸 English Language</span>
+            <span class="text-blue-200" data-i18n="ai_mentor.performance_analysis">• 📈 Performance Analysis</span>
+            <span class="text-blue-200" data-i18n="ai_mentor.ai_insights">• 🧠 AI Insights</span>
+        </div>
+    </div>
+
+    <!-- Quick Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3 class="text-lg font-semibold text-gray-600 mb-2" data-i18n="ai_mentor.total_reports">Total Reports</h3>
+            <div class="text-3xl font-bold text-blue-600">{{ reports|length if reports else 0 }}</div>
+            <p class="text-sm text-gray-500 mt-1" data-i18n="ai_mentor.sessions_analyzed">sessions analyzed</p>
+        </div>
+        
+        <div class="stat-card">
+            <h3 class="text-lg font-semibold text-gray-600 mb-2" data-i18n="ai_mentor.period">Period</h3>
+            <div class="text-2xl font-bold text-purple-600">{{ days }} <span data-i18n="ai_mentor.days">days</span></div>
+            <p class="text-sm text-gray-500 mt-1" data-i18n="ai_mentor.last_history">last history</p>
+        </div>
+        
+        <div class="stat-card">
+            <h3 class="text-lg font-semibold text-gray-600 mb-2" data-i18n="ai_mentor.performance">Performance</h3>
+            {% set total_profit = reports|sum(attribute='profit_loss') if reports else 0 %}
+            <div class="text-2xl font-bold {{ 'profit-positive' if total_profit > 0 else 'profit-negative' if total_profit < 0 else 'text-gray-600' }}">
+                ${{ "%.2f"|format(total_profit) }}
+            </div>
+            <p class="text-sm text-gray-500 mt-1" data-i18n="ai_mentor.total_pnl">total P&L</p>
+        </div>
+        
+        <div class="stat-card">
+            <h3 class="text-lg font-semibold text-gray-600 mb-2" data-i18n="ai_mentor.win_rate">Win Rate</h3>
+            {% set profitable_sessions = reports|selectattr('profit_loss', '>', 0)|list|length if reports else 0 %}
+            {% set win_rate = (profitable_sessions / reports|length * 100) if reports|length > 0 else 0 %}
+            <div class="text-2xl font-bold {{ 'text-green-600' if win_rate >= 60 else 'text-red-600' if win_rate < 40 else 'text-yellow-600' }}">
+                {{ "%.1f"|format(win_rate) }}%
+            </div>
+            <p class="text-sm text-gray-500 mt-1" data-i18n="ai_mentor.profit_sessions">profit sessions</p>
+        </div>
+    </div>
+
+    <!-- Date Filter -->
+    <div class="date-filter">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-700" data-i18n="ai_mentor.period_filter">Period Filter</h3>
+            <div class="flex space-x-2">
+                <button class="filter-btn {{ 'active' if days == 7 }}" onclick="changeFilter(7)" data-i18n="ai_mentor.filter_7_days">7 Days</button>
+                <button class="filter-btn {{ 'active' if days == 30 }}" onclick="changeFilter(30)" data-i18n="ai_mentor.filter_30_days">30 Days</button>
+                <button class="filter-btn {{ 'active' if days == 90 }}" onclick="changeFilter(90)" data-i18n="ai_mentor.filter_90_days">90 Days</button>
+                <button class="filter-btn {{ 'active' if days == 365 }}" onclick="changeFilter(365)" data-i18n="ai_mentor.filter_1_year">1 Year</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reports List -->
+    {% if reports %}
+        <div class="space-y-4">
+            {% for report in reports %}
+            <div class="history-card" data-session-date="{{ report.date.strftime('%Y-%m-%d') if report.date else report.session_date.strftime('%Y-%m-%d') }}">
+                <div class="session-meta">
+                    <div>
+                        <div class="session-date">
+                            📅 {{ (report.date if report.date else report.session_date).strftime('%d %B %Y') }}
+                        </div>
+                        <div class="text-sm text-gray-500 mt-1">
+                            {{ (report.date if report.date else report.session_date).strftime('%A') }} - <span data-i18n="ai_mentor.trading_session">Trading Session</span>
+                        </div>
+                    </div>
+                    <div class="session-performance">
+                        {% if report.emotions %}
+                            <span class="emotion-badge emotion-{{ report.emotions }}">
+                                {{ report.emotions|title }}
+                            </span>
+                        {% endif %}
+                        <span class="trades-count">
+                            {{ report.total_trades or report.trades|length or 0 }} <span data-i18n="ai_mentor.trades">trades</span>
+                        </span>
+                        <div class="text-xl font-bold {{ 'profit-positive' if (report.profit_loss or 0) > 0 else 'profit-negative' if (report.profit_loss or 0) < 0 else 'text-gray-600' }}">
+                            ${{ "%.2f"|format(report.profit_loss or 0) }}
+                        </div>
+                    </div>
+                </div>
+                
+                {% if report.motivation %}
+                <div class="ai-summary">
+                    <strong data-i18n="ai_mentor.ai_summary">🤖 AI Summary:</strong> {{ report.motivation[:200] }}{% if report.motivation|length > 200 %}...{% endif %}
+                </div>
+                {% endif %}
+                
+                <div class="flex items-center justify-between mt-3">
+                    <div class="text-sm text-gray-500">
+                        {% if report.market_conditions %}
+                            🌐 {{ report.market_conditions|title }} <span data-i18n="ai_mentor.market">Market</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-blue-600 text-sm font-medium" data-i18n="ai_mentor.view_details">
+                        View Details →
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Pagination (jika diperlukan) -->
+        {% if reports|length >= 10 %}
+        <div class="mt-8 text-center">
+            <button class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors" data-i18n="ai_mentor.load_more">
+                Load More
+            </button>
+        </div>
+        {% endif %}
+        
+    {% else %}
+        <!-- Empty State -->
+        <div class="empty-state">
+            <div class="text-6xl mb-4">📊</div>
+            <h3 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="ai_mentor.no_history">No Trading History Yet</h3>
+            <p class="text-gray-500 mb-6" data-i18n="ai_mentor.start_trading_for_history">
+                Start trading to get AI analysis and personalized advice from your digital mentor.
+            </p>
+            <div class="space-x-4">
+                <a href="/ai-mentor" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors inline-block">
+                    <span data-i18n="ai_mentor.start_trading_session">Start Trading Session</span>
+                </a>
+                <a href="/trading_bots" class="bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors inline-block">
+                    <span data-i18n="ai_mentor.view_trading_bots">View Trading Bots</span>
+                </a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function changeFilter(days) {
+    // Update URL dengan parameter days baru
+    const url = new URL(window.location);
+    url.searchParams.set('days', days);
+    window.location.href = url.toString();
+}
+
+// Add click event listeners to history cards
+document.addEventListener('DOMContentLoaded', function() {
+    const historyCards = document.querySelectorAll('.history-card');
+    historyCards.forEach(card => {
+        card.addEventListener('click', function() {
+            // Get session date from data attribute
+            const sessionDate = this.getAttribute('data-session-date');
+            // Redirect ke halaman detail sesi
+            window.location.href = `/ai-mentor/session/${sessionDate}`;
+        });
+    });
+});
+
+// Auto-refresh setiap 5 menit untuk update data terbaru
+setInterval(() => {
+    const url = new URL(window.location);
+    if (!url.searchParams.has('auto_refresh')) {
+        url.searchParams.set('auto_refresh', 'true');
+        window.location.href = url.toString();
+    }
+}, 300000); // 5 menit
+</script>
+{% endblock %}
