@@ -2,6 +2,8 @@
 
 import json
 import logging
+import threading
+import time
 from core.db import queries
 from .trading_bot import TradingBot
 from core.strategies.strategy_map import STRATEGY_MAP, resolve_strategy_class
@@ -11,6 +13,42 @@ logger = logging.getLogger(__name__)
 # Dictionary untuk menyimpan instance thread bot yang aktif
 # Key: bot_id (int), Value: TradingBot instance
 active_bots = {}
+
+# Health watchdog
+_watchdog_thread = None
+_watchdog_stop = threading.Event()
+
+def health_watchdog(interval_seconds: int = 60):
+    """背景守護：檢查所有 active_bots，若 thread 死掉但 DB 仍是 'Aktif' → 自動重啟"""
+    while not _watchdog_stop.is_set():
+        try:
+            for bot_id, bot_thread in list(active_bots.items()):
+                if not bot_thread.is_alive():
+                    bot_data = queries.get_bot_by_id(bot_id)
+                    if bot_data and bot_data.get('status') == 'Aktif':
+                        logger.warning(f"Health watchdog: Bot {bot_id} died, restarting...")
+                        success, msg = mulai_bot(bot_id)
+                        if success:
+                            logger.info(f"Watchdog restarted bot {bot_id}")
+                        else:
+                            logger.error(f"Watchdog failed to restart bot {bot_id}: {msg}")
+        except Exception as e:
+            logger.error(f"Health watchdog error: {e}")
+        time.sleep(interval_seconds)
+
+def start_health_watchdog(interval_seconds: int = 60):
+    global _watchdog_thread
+    if _watchdog_thread and _watchdog_thread.is_alive():
+        return
+    _watchdog_stop.clear()
+    _watchdog_thread = threading.Thread(target=health_watchdog, args=(interval_seconds,), daemon=True)
+    _watchdog_thread.start()
+    logger.info(f"Bot health watchdog started (check every {interval_seconds}s)")
+
+def stop_health_watchdog():
+    _watchdog_stop.set()
+    if _watchdog_thread:
+        _watchdog_thread.join(timeout=5)
 
 def auto_migrate_broker_symbols():
     """Automatically migrate bot symbols when broker changes are detected"""
@@ -303,3 +341,30 @@ def get_bot_analysis_data(bot_id: int):
     except Exception as e:
         logger.error(f"Error generating analysis for inactive bot {bot_id}: {e}")
         return {"signal": "ERROR", "explanation": f"Failed to generate analysis: {str(e)}"}
+
+
+def health_check_bots() -> dict:
+    """
+    Watchdog：巡檢所有 active_bots，若 thread 死掉但 DB 仍是 'Aktif'，
+    則自動重啟（365/24 自癒）。
+    由排程或 /bots/health 呼叫。
+    """
+    restarted = []
+    dead = []
+    for bot_id, bot_thread in list(active_bots.items()):
+        if not bot_thread.is_alive():
+            # thread 死掉，檢查 DB 狀態
+            from core.db import queries
+            bot_data = queries.get_bot_by_id(bot_id)
+            if bot_data and bot_data.get('status') == 'Aktif':
+                logger.warning(f"Watchdog: Bot {bot_id} ({bot_data.get('name')}) thread died, auto-restarting...")
+                success, msg = mulai_bot(bot_id)
+                if success:
+                    restarted.append(bot_id)
+                else:
+                    dead.append(bot_id)
+            else:
+                # DB 也不是 Aktif，清理記憶體
+                active_bots.pop(bot_id, None)
+                dead.append(bot_id)
+    return {"restarted": restarted, "dead_cleaned": dead, "alive_count": len(active_bots)}

@@ -84,9 +84,8 @@ class TradingBot(threading.Thread):
             feature_cols_path = os.path.join(project_root, 'feature_cols.pkl')
 
             if os.path.exists(model_path) and os.path.exists(scaler_path):
-                from core.ai.train_utils import safe_load_model
-                self.ai_predictor = safe_load_model(model_path)
-
+                with open(model_path, 'rb') as f:
+                    self.ai_predictor = pickle.load(f)
                 with open(scaler_path, 'rb') as f:
                     self.ai_scaler = pickle.load(f)
 
@@ -139,6 +138,12 @@ class TradingBot(threading.Thread):
             return
 
         while not self._stop_event.is_set():
+            # === 自癒：MT5 連線健康檢查 + 自動重連（365/24 不中斷）===
+            if not self._ensure_mt5_connected():
+                if not self._stop_event.is_set():
+                    time.sleep(self.check_interval)
+                continue
+
             try:
                 symbol_info = mt5.symbol_info(self.market_for_mt5)
                 if not symbol_info:
@@ -364,6 +369,31 @@ class TradingBot(threading.Thread):
         except Exception as e:
             self.log_activity('ERROR', f"Gagal mendapatkan posisi terbuka: {e}", exc_info=True)
             return None
+
+    def _ensure_mt5_connected(self) -> bool:
+        """確保 MT5 連線正常，斷線自動重連（365/24 自癒）"""
+        try:
+            if mt5.terminal_info() is not None:
+                return True
+        except Exception:
+            pass
+        try:
+            import os
+            account = int(os.getenv('MT5_LOGIN', '0'))
+            password = os.getenv('MT5_PASSWORD', '')
+            server = os.getenv('MT5_SERVER', 'MetaQuotes-Demo')
+            if account == 0 or not password:
+                self.log_activity('WARNING', 'MT5 連線斷開且無環境變數重連，跳過此輪')
+                return False
+            if mt5.initialize(login=account, password=password, server=server):
+                self.log_activity('INFO', f'MT5 自動重連成功 (account={account})')
+                return True
+            else:
+                self.log_activity('ERROR', f'MT5 重連失敗: {mt5.last_error()}')
+                return False
+        except Exception as e:
+            self.log_activity('ERROR', f'MT5 自癒異常: {e}')
+            return False
 
     def _is_market_open_for_symbol(self):
         try:
