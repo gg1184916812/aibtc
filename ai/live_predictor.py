@@ -23,8 +23,23 @@ class LivePredictor:
     def _load_models(self):
         try:
             from core.ai.train_utils import safe_load_model
+            
+            # Check if model file exists
+            if not os.path.exists(self.model_path):
+                logger.error(f"Model file not found: {self.model_path}")
+                self.model = None
+                self.scaler = None
+                return
+            
             self.model = safe_load_model(self.model_path)
 
+            # Check if scaler file exists
+            if not os.path.exists(self.scaler_path):
+                logger.error(f"Scaler file not found: {self.scaler_path}")
+                self.model = None
+                self.scaler = None
+                return
+                
             with open(self.scaler_path, 'rb') as f:
                 self.scaler = pickle.load(f)
             

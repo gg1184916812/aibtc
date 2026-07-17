@@ -76,26 +76,9 @@ class AITradingBot:
         
     def _load_model(self, model_path, scaler_path, feature_cols_path, calibrator_path):
         """加载 AI 模型"""
-        print(f"\n[DEBUG _load_model] 开始加载模型")
-        print(f"[DEBUG _load_model] model_path: {model_path}")
-        print(f"[DEBUG _load_model] scaler_path: {scaler_path}")
-        
-        # 检查文件是否存在
-        print(f"[DEBUG _load_model] 检查文件存在性:")
-        print(f"[DEBUG _load_model]   model exists: {os.path.exists(model_path)}")
-        print(f"[DEBUG _load_model]   scaler exists: {os.path.exists(scaler_path)}")
-        
         try:
             from core.ai.train_utils import safe_load_model
-            print(f"[DEBUG _load_model] 调用 safe_load_model...")
             self.model = safe_load_model(model_path)
-            
-            print(f"[DEBUG _load_model] safe_load_model 返回类型: {type(self.model)}")
-            print(f"[DEBUG _load_model] self.model is None: {self.model is None}")
-            
-            if self.model is None:
-                print(f"[DEBUG _load_model] ❌ 严重错误: safe_load_model 返回 None!")
-                return False
 
             with open(scaler_path, 'rb') as f:
                 self.scaler = pickle.load(f)
@@ -105,15 +88,9 @@ class AITradingBot:
             if calibrator_path and os.path.exists(calibrator_path):
                 with open(calibrator_path, 'rb') as f:
                     self.calibrators = pickle.load(f)
-            print(f"✅ AI 模型加载成功: {model_path}")
-            print(f"[DEBUG _load_model] 模型类型: {type(self.model).__name__}")
-            print(f"[DEBUG _load_model] 模型方法: predict={hasattr(self.model, 'predict')}, predict_proba={hasattr(self.model, 'predict_proba')}")
             logger.info(f"AI 模型加载成功: {model_path}")
             return True
         except Exception as e:
-            print(f"❌ AI 模型加载失败: {e}")
-            import traceback
-            traceback.print_exc()
             logger.error(f"加载 AI 模型失败: {e}")
             return False
     
@@ -263,18 +240,10 @@ class AITradingBot:
     
     def _do_prediction(self, df):
         """执行 AI 预测"""
-        print(f"[DEBUG _do_prediction] 被调用")
-        
-        if self.model is None:
-            print(f"[DEBUG _do_prediction] ❌ 严重错误: Model is None - 无法执行预测!")
-            self._add_log("❌ 模型未加载，无法预测", "error")
-            return
-        
         try:
             df_feat = FeatureFactory.compute_features(df.tail(100))
             if len(df_feat) == 0:
                 self._add_log("⚠️ 特征计算失败", "warning")
-                print(f"[DEBUG _do_prediction] ⚠️ 特征计算返回空数据")
                 return
             
             latest = df_feat.iloc[-1:].copy()
@@ -291,7 +260,6 @@ class AITradingBot:
             X = latest.reindex(columns=feature_cols, fill_value=0)
             X_scaled = self.scaler.transform(X) if self.scaler else X.values
             
-            print(f"[DEBUG _do_prediction] 执行预测...")
             # 原始预测
             raw_proba = self.model.predict_proba(X_scaled)[0]
             pred = int(self.model.predict(X_scaled)[0])
@@ -313,8 +281,6 @@ class AITradingBot:
             self.current_confidence = float(max(proba))
             self.last_prediction_time = datetime.now()
             
-            print(f"[DEBUG _do_prediction] ✅ 预测完成: state={pred}, confidence={self.current_confidence:.4f}")
-            
             state_names = {0: '震荡', 1: '多头趋势', 2: '空头趋势', 3: '高波动突破'}
             state_emoji = {0: '🔄', 1: '📈', 2: '📉', 3: '⚡'}
             
@@ -325,12 +291,8 @@ class AITradingBot:
             )
             
             # 根据预测状态切换策略（置信度 > 55% 才切换）
-            print(f"[DEBUG _do_prediction] 检查策略切换: confidence={self.current_confidence:.4f}, threshold=0.55")
             if self.current_confidence > 0.55:
-                print(f"[DEBUG _do_prediction] ✅ 置信度达标，执行策略切换")
                 self._switch_strategy(pred)
-            else:
-                print(f"[DEBUG _do_prediction] ⚠️ 置信度不足，跳过策略切换")
             
         except Exception as e:
             logger.error(f"AI 预测失败: {e}")
@@ -338,18 +300,13 @@ class AITradingBot:
     
     def _switch_strategy(self, state):
         """根据 AI 预测切换策略（使用动态推荐）"""
-        print(f"[DEBUG _switch_strategy] called: state={state}")
-        
         # 获取推荐策略
         recommendation = get_recommended_strategy(self.market_for_mt5, state, "H1")
         new_strategy = recommendation.get('strategy', 'BOLLINGER_REVERSION')
         new_params = recommendation.get('params', {})
         
-        print(f"[DEBUG _switch_strategy] 推荐策略: {new_strategy} (当前: {self.current_strategy})")
-        
         # 如果策略变化，重新初始化
         if new_strategy != self.current_strategy:
-            print(f"[DEBUG _switch_strategy] 策略变化，尝试切换...")
             strategy_class = resolve_strategy_class(new_strategy)
             if strategy_class:
                 class MockBot:
@@ -371,11 +328,6 @@ class AITradingBot:
                     f"{source_text}{win_text}",
                     "strategy"
                 )
-                print(f"[DEBUG _switch_strategy] ✅ 策略切换成功: {new_strategy}")
-            else:
-                print(f"[DEBUG _switch_strategy] ❌ 策略类未找到: {new_strategy}")
-        else:
-            print(f"[DEBUG _switch_strategy] 策略未变化: {new_strategy}")
     
     def _analyze_strategy(self, df):
         """执行策略分析"""

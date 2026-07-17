@@ -13,12 +13,20 @@ class FeatureFactory:
         """
         输入OHLCV DataFrame（含 time, open, high, low, close, volume）
         返回特征DataFrame（索引与df相同，包含所有特征列）
+        增强版：添加异常值处理和数值稳定性检查
         """
         df = df.copy()
         close = df['close']
         high = df['high']
         low = df['low']
         volume = df.get('volume', df.get('tick_volume'))
+
+        # 异常值处理：替换极端值
+        for col in ['open', 'high', 'low', 'close']:
+            if col in df.columns:
+                q1 = df[col].quantile(0.01)
+                q99 = df[col].quantile(0.99)
+                df[col] = df[col].clip(lower=q1, upper=q99)
 
         # 1. 收益率特征
         df['ret_1'] = close.pct_change()
@@ -65,6 +73,11 @@ class FeatureFactory:
 
         # 10. 蜡烛实体比例（动能）
         df['body_ratio'] = abs(close - df['open']) / (high - low + 1e-6)
+
+        # 处理无穷大和NaN值
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.ffill().bfill()  # pandas 2.x compatible
+        df = df.fillna(0)  # 剩余的NaN填充为0
 
         df.dropna(inplace=True)
         return df

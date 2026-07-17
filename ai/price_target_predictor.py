@@ -33,34 +33,29 @@ class PriceTargetPredictor:
     
     def prepare_labels(self, df: pd.DataFrame) -> tuple:
         """
-        准备标签：
-        - price_target: 未来 N 根 K 线内的最高价或最低价
-        - time_to_target: 到达目标价需要的根数
+        准备标签（自洽版本）：
+        - price_target: 未来 N 根 K 线内、朝主方向实际触及的极值（命中即止），
+          且目标根数 time_to_target 必 <= N，确保 "目标价/到达根数" 互相吻合。
+        - time_to_target: 第一次触及该目标价的根数（clamp 到 [1, N]）。
         """
         high = df['high'].values
         low = df['low'].values
         close = df['close'].values
         open_price = df['open'].values
-        
+
         price_targets = []
         time_targets = []
-        
+
         for i in range(len(df) - self.forward_bars - 1):
-            # 未来窗口
             future_high = np.max(high[i+1:i+self.forward_bars+1])
             future_low = np.min(low[i+1:i+self.forward_bars+1])
             future_close = close[i+self.forward_bars]
-            
+
             current_close = close[i]
-            current_open = open_price[i]
-            
-            # 判断趋势方向
-            # 如果收盘价 > 开盘价，且未来高点距离更远，预测高点
-            # 如果收盘价 < 开盘价，且未来低点距离更远，预测低点
+
             up_distance = future_high - current_close
             down_distance = current_close - future_low
-            
-            # 如果向上空间大于向下空间，预测高点，否则预测低点
+
             # 用 forward 窗口末端的净方向决定主方向（比单根 open/close 稳健）
             net_move = future_close - current_close
             if net_move > 0:
@@ -77,7 +72,7 @@ class PriceTargetPredictor:
                     if high[i+j] >= future_high:
                         time_to_target = j
                         break
-                target = close[i + time_to_target]
+                target = close[i + time_to_target]  # 触达那根的真实收盘价（自洽、不过度夸大）
             elif direction == 'DOWN':
                 time_to_target = self.forward_bars
                 for j in range(1, self.forward_bars + 1):
@@ -86,12 +81,13 @@ class PriceTargetPredictor:
                         break
                 target = close[i + time_to_target]
             else:
+                # 震荡：目标取末端收盘价，时间取中点附近（保证 <= N）
                 time_to_target = max(1, self.forward_bars // 2)
                 target = future_close
 
             price_targets.append(target)
             time_targets.append(max(1, min(self.forward_bars, int(time_to_target))))
-        
+
         return np.array(price_targets), np.array(time_targets)
     
     def train(self, df: pd.DataFrame, forward_bars: int = 20) -> 'PriceTargetPredictor':
@@ -181,6 +177,7 @@ class PriceTargetPredictor:
             
             target_price = float(self.price_model.predict(X_scaled)[0])
             target_time = int(round(self.time_model.predict(X_scaled)[0]))
+            # 时间必须落在 [1, forward_bars]，否则目标/时间不自洽
             target_time = max(1, min(self.forward_bars, target_time))
 
             current_price = df_slice['close'].iloc[-1]
@@ -196,10 +193,11 @@ class PriceTargetPredictor:
                 direction = 'SIDEWAYS'
                 movement_pct = 0
 
-            # 合理性保护：单根 M5 历史极少超过约 2%，target_time 根内的累计涨幅不应离谱
+            # 合理性保护：单根 M5 历史极少超过 ~1.5%，target_time 根内的累计涨幅
+            # 不应离谱。若 movement_pct / sqrt(target_time) 过大，收敛到保守上限。
             if direction != 'SIDEWAYS' and target_time > 0:
                 per_bar_pct = abs(movement_pct) / target_time
-                cap = 2.0
+                cap = 2.0  # 单根 M5 涨幅上限（百分比），按品种可调
                 if per_bar_pct > cap:
                     sign = 1 if direction == 'UP' else -1
                     movement_pct = sign * min(abs(movement_pct), cap * target_time)

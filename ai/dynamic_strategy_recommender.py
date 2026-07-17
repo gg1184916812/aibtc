@@ -147,5 +147,12 @@ recommender = DynamicStrategyRecommender()
 
 
 def get_recommended_strategy(symbol: str, state: int, timeframe: str = "H1") -> Dict[str, Any]:
-    """便捷函数"""
-    return recommender.get_best_strategy(symbol, state, timeframe)
+    """便捷函数：与回测共用统一的 select_strategy（状态+表现排名）"""
+    from core.ai.state_strategy_map import select_strategy
+    sel = select_strategy(state, None, symbol, timeframe)
+    # 兼容旧返回字段
+    sel.setdefault('win_rate', None)
+    sel.setdefault('total_profit', None)
+    sel.setdefault('total_trades', None)
+    sel.setdefault('max_drawdown', None)
+    return sel

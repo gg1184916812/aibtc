@@ -1,0 +1,18 @@
+{
+    "switching_cooldown_hours": 0.5,
+    "performance_evaluation_period": 50,
+    "min_performance_score": 0.75,
+    "switch_threshold": 0.2,
+    "market_condition_weight": 0.4,
+    "data_directory": "lab/backtest_data",
+    "monitored_instruments": ["XAUUSDm", "BTCUSDm"],
+    "test_strategies": [
+        "INDEX_BREAKOUT_PRO", "MA_CROSSOVER", "RSI_CROSSOVER",
+        "TURTLE_BREAKOUT", "QUANTUMBOTX_HYBRID"
+    ],
+    "enable_dynamic_adjustment": true,
+    "initial_capital": 100.0,
+    "enable_spread_costs": true,
+    "enable_slippage": true,
+    "enable_realistic_execution": true
+}
